@@ -61,6 +61,7 @@ val a = 10
 a = 20 // 오류
 ```
 
+
 ```kotlin
 val list = mutableListOf(1, 2, 3)
 list.add(4)
@@ -84,54 +85,6 @@ fun main() {
 - 읽기 전용 프로퍼티는 다른 프로퍼티를 활용하는 사용자 정의 게터로도 정의 할 수 있습니다.
 - var 프로퍼티를 사용하는 val 프로퍼티는 var 프로퍼티가 변할 때 변할 수 있습니다.
 
-**[ReadOnlyProperty](./ReadOnlyProperty.kt)**
-- 값을 추출할 때마다 사용자 정의 게터가 호출되므로 이러한 코드를 사용할 수 있다.
-
-<br/>
-
-```kotlin
-interface Element {
-   val active: Boolean
-}
-
-class ActualElement: Element {
-    override var active: Boolean = false
-}
-```
-- 코틀린의 프로퍼티는 기본적으로 캡슐화되어 있고, 추가적으로 사용자 정의 접근자(getter, setter)를 가질 수 있습니다.
-- var 은 게터와 세터를 모두 제공하지만, val 은 변경이 불가능하므로 게터만 제공합니다. 그래서 val 을 var 로 오버라이드 할 수 있습니다.
-
-<br/>
-
-읽기 전용 프로퍼티 val 의 값은 변경될 수 있기는 하지만, 프로퍼티 레퍼런스 자체를 변경할 수는 없으므로 동기화 문제 등을 줄일 수 있ㅅ브니다.
-그래서 일반적으로 var 보다 val 을 많이 사용합니다.
-
-<br/>
-
-```kotlin
-val name: String? = "Marton"
-val surname: String = "Braun"
-
-val fullName: String?
-   get() = name?.let { "$it $surname" }
-
-val fullName2: String? = name?.let { "$it $surname" }
-
-fun run() {
-   if (fullName != null) { 
-       println(fullName.length) // 오류
-   }
-
-   if (fullName2 != null) {
-      println(fullName2.length)
-   }
-}
-```
-[SampleSmartCast](./ReadOnlyProperty.kt)
-- val 은 정의 옆에 상태가 바로 적히므로, 코드의 실행을 예측하는 것이 훨씬 간단합니다.
-- 스마트 캐스트(smart-cast) 등의 추가적인 기능을 활용할 수 있ㅅ브니다.
-- `fullName` 은 커스텀 게터로 정의했으므로 스마트 캐스트를 할 수 없습니다. 게터를 활용하므로, 값을 사용하는 시점의 name에 따라서 다른 결과가 나올 수 있기 때문입니다.
-- `fullName2` 처럼 지역 변수가 아닌 프로퍼티가 final 이고, 사용자 정의 게터를 갖지 않을 경우 스마트 캐스트 할 수 있습니다.
 
 
 ### 가변 컬렉션과 읽기 전용 컬렉션 구분하기
