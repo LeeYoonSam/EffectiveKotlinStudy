@@ -135,9 +135,98 @@ fun run() {
 
 
 ### 가변 컬렉션과 읽기 전용 컬렉션 구분하기
+- 코틀린은 읽고 쓸 수 있는 프로퍼티와 읽기 전용 프로퍼티로 구분 됩니다.
+- 마찬가지로 코틀린은 읽고 쓸 수 있는 컬렉션과 읽기 전용 컬렉션으로 구분 됩니다.
+- 컬렉션 계층의 읽기 전용 인터페이스, 변경을 위한 메서드를 따로 가지지 않습니다.
+  - Iterable
+  - Collection
+  - Set
+  - List
+- 컬렉션 계층의 읽고 쓸 수 있는 컬렉션, 읽기 전용 인터페이스를 상속 받아서, 변경을 위한 메서드를 추가한 것입니다.
+  - MutableIterable
+  - MutableCollection
+  - MutableSet
+  - MutableList
+
+
+### [ReadOnlyPropertyCollections](./ReadOnlyPropertyCollections.kt)
+- 컬렉션을 진짜로 불변(immutable)하게 만들지 않고, 읽기 전용으로 설계
+- 내부적으로 인터페이스를 사용하고 있으므로, 실제 컬렉션을 리턴할 수 있습니다.
+- 코틀린이 내부적으로 immutable 하지 않은 컬렉션을 외부적으로 immutable 하게 보이게 만들어서 얻어지는 안전성
+- 그런데 개발자가 `시스템 해킹`을 시도해서 다운 캐스팅 할 때 문제가 됩니다.
+- 리스트를 읽기 전용으로 리턴하면, 이를 읽기 전용으로만 사용해야 합니다.
+- 컬렉션 다운 캐스팅은 이러한 계약을 위반하고, 추상화를 무시하는 행위입니다.
+
+```kotlin
+val list = listOf(1, 2, 3)
+
+// 이렇게 하지 마세요
+    if (list is MutableList) {
+        list.add(4)
+    }
+```
+
+읽기 전용에서 mutable로 변경해야 한다면, 복재(copy)를 통해서 새로운 mutable 컬렉션을 만드는 list.toMutableList 를 활용해야 합니다.
+```kotlin
+val list = listOf(1, 2, 3)
+val mutableList = list.toMutableList()
+mutableList.add(4)
+```
+- 이렇게 코드를 작성하면 어떠한 규약도 어기지 않을 수 있으며, 기존의 객체는 여전히 immutable이라 수정할 수 없으므로, 안전하다고 할 수 있습니다. 
+
 ### 데이터 클래스의 copy
 
+String 이나 Int 처럼 내부적인 상태를 변경하지 않는 immutable 객체를 많이 사용하는 데는 이유가 있습니다.
 
+Immutable 객체를 사용할 때 장점
+1. 한 번 정의된 상태가 유지되므로, 코드를 이해하기 쉽습니다.
+2. immutable 객체는 공유했을 때도 충돌이 따로 이루어지지 않으므로, 병렬 처리를 안전하게 할 수 있습니다.
+3. immutable 객체에 대한 참조는 변경되지 않으므로, 쉽게 캐시할 수 있습니다.
+4. immutable 객체는 방어적 복사본을 만들 필요가 없습니다. 또한 객체를 복사할 때 깊은 복사를 따로 하지 않아도 됩니다.
+5. immutable 객체는 다른 객체(mutable 또는 immutable 객체)를 만들 때 활용하기 좋습니다. 또한 immutable 객체는 실행을 더 쉽게 예측할 수 있습니다.
+6. immutable 객체는 `세트(set)` 또는 `맵(map)의 키`로 사용할 수 있습니다.
+
+요소에 수정이 일어나면 해시 테이블 내부에서 요소를 찾을 수 없게 되어 버립니다.
+
+```kotlin
+val names: SortedSet<FullName> = TreeSet()
+val person = FullName("AAA", "AAA")
+names.add(person)
+names.add(FullName("Jordan", "Hansen"))
+names.add(FullName("David", "Blanc"))
+
+print(name) // [AAA AAA, David Blance, Jordan Hansen]
+print(person in names) // true
+
+person.name = "ZZZ"
+print(name) // [ZZZ AAA, David Blance, Jordan Hansen]
+print(person in names) // true
+```
+- 마지막 출력을 보면, 세트 내부에 해당 객체가 있음에도 false 를 리턴한다는 것을 학인할 수 있습니다.
+- 객체를 변경했기 때문에 찾을 수 없는 것입니다.
+
+<br/>
+
+지금까지 살표본 것처러 mutable 객체는 예측하기 어려우며 위험하다는 단점이 있습니다.
+
+반면, immutable 객체는 변경할 수 없다는 단점이 있습니다.
+
+따라서 immutable 객체는 자신의 일부를 수정한 새로운 객체를 만들어 내는 메서드를 가져야 합니다.
+
+예를 들어 User 라는 immutable 객체가 있고, 성(surname)을 변경해야 한다면, withSurname 과 같은 메서드를 제공해서, 
+자신을 수정한 새로운 객체를 만들어 낼 수 있게 해야 합니다.
+
+### [DataCopy](./DataCopy.kt)
+- 모든 프로퍼티를 대상으로 이런 함수를 하나하나 만드는 것은 굉장히 귀찮은 일입니다.
+- `data` 한정자는 `copy`라는 메서드를 활용하면, 모든 기본 생성자 프로퍼티가 같은 새로운 객체를 만들어 낼 수 있습니다.
+
+<br/>
+
+코틀린에서는 이와 같은 형태로 immutable 특성을 가지는 데이터 모델 클래스를 만듭니다.
+
+변경을 할 수 있다는 측면만 보면 mutable 객체가 더 좋아 보이지만, 
+이렇게 데이터 모델 클래스를 만들어 immutable 객체로 만드는 것이 더 많은 장점을 가지므로, 
+기본적으로는 이렇게 만드는 것이 좋습니다.
 
 --- 
 
