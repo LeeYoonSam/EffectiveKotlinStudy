@@ -228,6 +228,150 @@ print(person in names) // true
 이렇게 데이터 모델 클래스를 만들어 immutable 객체로 만드는 것이 더 많은 장점을 가지므로, 
 기본적으로는 이렇게 만드는 것이 좋습니다.
 
+## 다른 종류의 변경 가능 지점
+
+변경할 수 있는 리스트를 만드는 두 가지 방법으로 하나는 mutable 컬렉션, 다른 하나는 var로 읽고 쓸 수 있는 프로퍼티를 만드는 것입니다.
+
+```kotlin
+val list1: MutableList<Int> = mutableListOf()
+var list2: List<Int> = listOf()
+```
+
+<br/>
+
+두 가지 모두 변경할 수 있지만 방법이 다릅니다.
+```kotlin
+list1.add(1)
+list2 = list2 + 1
+```
+
+<br/>
+
+물론 두 가지 코드 모두 다음과 같이 += 연산자를 활용해서 변경할 수 있지만, 실질적으로 이루어지는 처리는 다릅니다.
+두 가지 모두 정상적으로 동작하지만, 장단점이 있고, 모두 변경 가능 지점(mutating point)이 있지만, 그 위치가 다릅니다.
+```kotlin
+list1 += 1 // list1.plusAssign(1)로 변경됩니다.
+```
+- 구체적인 리스트 구현 내부에 변경 가능 지점이 있습니다. 
+- 멀티스레드 처리가 이루어질 경우, 내부적으로 적절한 동기화가 되어 있는지 확실하게 알 수 없으므로 위험합니다.
+
+```kotlin
+list2 += 1 // list2 = list2.plus(1)로 변경됩니다.
+```
+- 프로퍼티 자체가 변경 가능 지점입니다.
+- 멀티스레드 처리의 안전성이 더 좋다고 할 수 있습니다. (잘못 만들면 일부 요소가 손실될 수도 있습니다.)
+
+[MutatingPoint](./MutatingPoint.kt)
+
+### mutable 리스트 대신 mutable 프로퍼티를 사용
+mutable 리스트 대신 mutable 프로퍼티를 사용하는 형태는 사용자 정의 세터(또는 이를 사용하는 델리게이터)를 활용해서 변경을 추적할 수 있습니다.
+예를 들어 Delegates.observable 을 사용하면, 리스트에 변경이 있을 때 로그를 출력할 수 있습니다.
+
+[DelegateObservable](./DelegateObservable.kt)
+- mutable 컬렉션도 이처럼 관찰할 수 있게 만들려면, 추가적인 구현이 필요합니다.
+- mutable 프로퍼티에 읽기 전용 컬렉션을 넣어 사용하는 것이 쉽습니다.
+- 여러 객체를 변경하는 여러 메서드 대신 세터를 사용하면 되고, 이를 private 으로 만들 수도 있기 때문입니다.
+
+```kotlin
+var announcements = listOf<Announcement>()
+    private set
+```
+- mutable 컬렉션을 사용하는 것이 처음에는 더 간단하게 느껴지겠지만, mutable 프로퍼티를 사용하면 객체 변경을 제어하기가 더 쉽습니다.
+
+### 최악의 방식
+```kotlin
+// 이렇게 하지 마세요.
+var list3 = mutableListOf<Int>()
+```
+- 프로퍼티와 컬렉션을 모두 변경 가능한 지점으로 만드는것은 최악의 방식입니다.
+- 변경될 수 있는 두 지점 모두에 대한 동기화를 구현해야 합니다.
+- 모호성이 발생해서 `+=`를 사용할 수 없게 됩니다.
+- 상태를 변경할 수 있는 불필요한 방법은 만들지 않아야 합니다.
+- 상태를 변경하는 모든 방법은 코드를 이해하고 유지해야 하므로 비용이 발생합니다.
+- 따라서 모든 가변성을 제한하는 것이 좋습니다.
+
+## 변경 가능 지점 노출하지 말기
+상태를 나타내는 mutable 객체를 외부에 노출하는 것은 굉장히 위험합니다.
+
+```kotlin
+data class User(val name: String)
+
+class UserRepository {
+    private val storedUsers: MutableMap<Int, String> = mutableMapOf()
+    
+    fun loadAll(): MutableMap<Int, String> {
+        return storedUsers
+    }
+}
+```
+- loadAll 을 사용해서 private 상태인 UserRepository 를 수정할 수 있습니다.
+
+```kotlin
+val userRepository = UserRepository()
+val storedUsers = userRepository.loadAll()
+storedUsers[4] = "Kirill"
+//...
+
+print(userRepository.loadAll()) // {4=Kirill}
+```
+- 이러한 코드는 돌발적인 수정이 일어날 때 위험할 수 있습니다.
+
+<br/>
+
+이를 처리하는 방법은 두 가지 입니다.
+
+### 리턴되는 mutable 객체를 복제
+- 방어적 복제(defensive copying)라고 부릅니다.
+- data 한정자로 만들어지는 copy 메서드를 활용하면 좋습니다.
+
+```kotlin
+class UserHolder {
+    private val user: MutableUser()
+            
+    fun get(): MutableUser {
+        return user.copy()
+    }
+    
+    //...
+}
+```
+
+### 가능하다면 무조건 가변성을 제한
+- 컬렉션은 객체를 읽기 전용 슈퍼타입으로 업캐스트하여 가변성을 제한할수도 있습니다.
+
+```kotlin
+data class User(val name: String)
+
+class UserRepository {
+    private val storedUsers: MutableMap<Int, String> = 
+        mutableMapOf()
+    
+    fun loadAll(): Map<Int, String> {
+        return storedUsers
+    }
+    
+    //...
+}
+```
+
+## 정리
+이번 장에서는 가변성을 제한한 immutable 객체를 사용하는 것이 좋은 이유에 대해서 알아 보았습니다.
+코틀린은 가변성을 제한하기 위해 다양한 도구들을 제공합니다.
+이를 활용해 가변 지점을 제한하며 코드를 작성하도록 합시다.
+
+### 이때 활용할 수 있는 몇 가지 규칙을 정리해 보면, 다음과 같습니다.
+- var 보다는 val 을 사용하는 것이 좋습니다.
+- mutable 프로퍼티보다는 immutable 프로퍼티를 사용하는 것이 좋습니다.
+- mutable 객체와 클래스보다는 immutable 객체와 클래스를 사용하는 것이 좋습니다.
+- 변경이 필요한 대상을 만들어야 한다면, immutable 데이터 클래스로 만들고 copy 를 활용하는 것이 좋습니다.
+- 컬렉션에 상태를 저장해야 한다면, mutable 컬렉션보다는 읽기 전용 컬렉션을 사용하는 것이 좋습니다.
+- 변이 지점을 적절하게 설계하고, 불필요한 변이 지점은 만들지 않는것이 좋습니다.
+- mutable 객체를 외부에 노출하지 않는 것이 좋습니다.
+
+### 예외
+- 가끔 효율성 때문에 immutable 객체보다 mutable 객체를 사용하는 것이 좋을 때가 있습니다. 이러한 최적화는 코드에서 성능이 중요한 부분에서만 사용하는 것이 좋습니다.
+- immutable 객체를 사용할 때는 언제나 멀티스레드 때에 더 많은 주의를 기울여야 한다는 것을 기억하세요
+
 --- 
 
 ## 추가 궁금사항 정리
